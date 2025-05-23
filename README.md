@@ -12,6 +12,10 @@ This project consists of three main components that work together to track mobil
 
 ---
 
+![Project Image](https://i.imgur.com/nQwZbGP.jpeg)
+
+---
+
 ## 🧩 Project Structure
 
 ```
