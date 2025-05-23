@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+    <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+    <div id="devices_menu" class="border">
+        <h1 id="tituloDispositivos">Dispositivos</h1>
+        <div id="dispositivos"></div>
+        <div id="rangeWrapper">
+            <div>
+                <input type="radio" name="range" id="300000" checked>
+                <label for="300000">5 min</label>
+            </div>
+            <div>
+                <input type="radio" name="range" id="900000">
+                <label for="900000">15 min</label>
+            </div>
+            <div>
+                <input type="radio" name="range" id="1800000">
+                <label for="1800000">30 min</label>
+            </div>
+            <div>
+                <input type="radio" name="range" id="3600000">
+                <label for="3600000">1 hora</label>
+            </div>
+            <div>
+                <input type="radio" name="range" id="28800000">
+                <label for="28800000">8 horas</label>
+            </div>
+            <div>
+                <input type="radio" name="range" id="43200000">
+                <label for="43200000">12 horas</label>
+            </div>
+            <div>
+                <input type="radio" name="range" id="86400000">
+                <label for="86400000">1 dia</label>
+            </div>
+            <div>
+                <input type="radio" name="range" id="432000000">
+                <label for="432000000">5 dias</label>
+            </div>
+            <div>
+                <input type="radio" name="range" id="0">
+                <label for="0">Tudo</label>
+            </div>
+        </div>
+    </div>
+    <div id="map" class="border"></div>
+    <div id="device_context_menu">
+        <p>Editar</p>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet-src.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
