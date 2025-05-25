@@ -25,6 +25,12 @@ db.prepare(`
     )
 `).run();
 
+// Avoids duplicates
+db.prepare(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_loc
+    ON localizacoes(phoneID, latitude, longitude, timestamp)
+`).run();
+
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
@@ -47,12 +53,22 @@ app.post('/api/enviarLocalizacao', (req, res) => {
             INSERT INTO localizacoes (phoneID, latitude, longitude, timestamp, raio, altitude, precisionAltitude)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
-        stmt.run(phoneID, latitude, longitude, timestamp, raio, altitude, precisionAltitude);
-        console.log(`Recebido: ${latitude}, ${longitude} - ${new Date(timestamp).toLocaleString()}`);
-        return res.status(200).send('Localização recebida!');
+        try {
+            stmt.run(phoneID, latitude, longitude, timestamp, raio, altitude, precisionAltitude);
+            console.log(`Recebido: ${latitude}, ${longitude} - ${new Date(timestamp).toLocaleString()}`);
+            return res.status(200).send('Localização recebida!');
+        } catch (err) {
+            if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+                // Registro duplicado, apenas ignore ou informe
+                return res.status(200).send('Localização duplicada ignorada!');
+            }
+            console.error('Erro ao inserir localização:', err);
+            return res.status(500).send('Erro ao inserir localização');
+        }
     }
     res.status(400).send('Dados inválidos!');
 });
+
 
 app.get('/api/listarLocalizacoes', autenticar, (req, res) => {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
