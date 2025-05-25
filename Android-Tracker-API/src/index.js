@@ -59,7 +59,7 @@ app.post('/api/enviarLocalizacao', (req, res) => {
             return res.status(200).send('Localização recebida!');
         } catch (err) {
             if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-                // Registro duplicado, apenas ignore ou informe
+                // Registro duplicado
                 return res.status(200).send('Localização duplicada ignorada!');
             }
             console.error('Erro ao inserir localização:', err);
