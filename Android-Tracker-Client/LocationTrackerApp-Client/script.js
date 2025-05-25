@@ -38,12 +38,19 @@ function startApp(AUTH_TOKEN, apiUrl) {
 
         await readHistoryIDs();
 
-        setInterval(async () => {
-            await requestAPI();
-            if (actualDeviceID !== null) {
-                selectDevice(actualDeviceID);
+        async function tick() {
+            try {
+                await requestAPI();
+                if (actualDeviceID !== null) {
+                    selectDevice(actualDeviceID);
+                }
+            } catch (e) {
+                console.error("Erro no tick:", e);
+            } finally {
+                setTimeout(tick, 5000);
             }
-        }, 5000);
+        }
+        tick();
 
         async function readHistoryIDs() {
             comModule.cefLog("readHistoryIDs running...")
@@ -59,84 +66,87 @@ function startApp(AUTH_TOKEN, apiUrl) {
 
         async function requestAPI() {
             try {
-                const localizacoes = await fetchAllLocations();
+                let page = 1;
+                const limit = 100;
+                let totalPages = 1;
 
-                let updated = false;
+                readTimeStamps = [];
 
-                localizacoes.forEach(loc => {
-                    if (typeof loc.timestamp === 'string') loc.timestamp = Number(loc.timestamp);
-                });
+                do {
+                    const response = await fetch(
+                        `${apiUrl}listarLocalizacoes?page=${page}&limit=${limit}`,
+                        { headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` } }
+                    );
+                    if (!response.ok) throw new Error(`Erro ao buscar página ${page}`);
+                    const result = await response.json();
+                    const locs = result.data || [];
+                    totalPages = result.totalPages || 1;
 
-                localizacoes.forEach(loc => {
-                    if (!devices.some(d => d.id == loc.phoneID)) {
-                        devices.push({ id: loc.phoneID, display: loc.phoneID });
-                        devices_changed = true;
+                    let updated = false;
+
+                    locs.forEach(loc => {
+                        if (!devices.some(d => d.id == loc.phoneID)) {
+                            devices.push({ id: loc.phoneID, display: loc.phoneID });
+                            devices_changed = true;
+                        }
+
+                        if (!localDataMap[loc.phoneID]) {
+                            localDataMap[loc.phoneID] = [];
+                        }
+
+                        if (!readTimeStamps.includes(loc.timestamp)) {
+                            localDataMap[loc.phoneID].push(loc);
+                            readTimeStamps.push(loc.timestamp);
+                            updated = true;
+                        }
+                    });
+
+                    if (locs.length > 0) {
+                        await comModule.registerFile(JSON.stringify(locs));
+                        await comModule.cefLog(`Página ${page} salva localmente (${locs.length} itens).`);
+                        const ids = await comModule.readFileIDs();
+                        await comModule.cefLog(`IDs após salvar página ${page}:`, JSON.stringify(ids));
                     }
 
-                    if (!localDataMap[loc.phoneID]) {
-                        localDataMap[loc.phoneID] = [];
+                    if (updated && actualDeviceID !== null) {
+                        await updateMap(actualDeviceID);
                     }
 
-                    if (!readTimeStamps.includes(loc.timestamp)) {
-                        localDataMap[loc.phoneID].push(loc);
-                        readTimeStamps.push(loc.timestamp);
-                        updated = true;
-                    }
-                });
+                    page++;
+                } while (page <= totalPages);
 
-                if (updated && actualDeviceID) {
-                    updateMap(actualDeviceID); 
-                }
+                readTimeStamps = [...new Set(readTimeStamps)];
 
-                await comModule.registerFile(JSON.stringify(localizacoes));
                 await removeFromAPI();
                 await loadDevices();
+
             } catch (error) {
-                console.error(error);
+                console.error("requestAPI:", error);
             }
         }
 
-        async function fetchAllLocations() {
-            let allLocations = [];
-            let page = 1;
-            const limit = 100;
-            let totalPages = 1;
-
-            do {
-                const response = await fetch(`${apiUrl}listarLocalizacoes?page=${page}&limit=${limit}`, {
-                    headers: {
-                        'Authorization': `Bearer ${AUTH_TOKEN}`
-                    }
-                });
-                if (!response.ok) throw new Error("Erro ao buscar localizações");
-                const result = await response.json();
-
-                allLocations = allLocations.concat(result.data || []);
-                totalPages = result.totalPages || 1;
-                page++;
-            } while (page <= totalPages);
-
-            return allLocations;
-        }
-
-
-        function removeFromAPI() {
-            fetch(apiUrl + "limparLocalizacoesLidas", {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${AUTH_TOKEN}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ ids: readTimeStamps })
-            })
-                .then(response => {
+        async function removeFromAPI() {
+            const batchSize = 900; // <= margem de segurança
+            for (let i = 0; i < readTimeStamps.length; i += batchSize) {
+                const batch = readTimeStamps.slice(i, i + batchSize);
+                try {
+                    const response = await fetch(apiUrl + "limparLocalizacoesLidas", {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${AUTH_TOKEN}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ ids: batch })
+                    });
                     if (!response.ok) {
                         throw new Error(`Erro na requisição: ${response.status}`);
                     }
-                    return response.text();
-                })
-                .then(data => comModule.cefLog("Resposta da API:", data))
-                .catch(error => console.error("Erro ao limpar localizações lidas:", error));
+                    const data = await response.text();
+                    await comModule.cefLog("Resposta da API:", data);
+                } catch (error) {
+                    console.error("Erro ao limpar localizações lidas:", error);
+                }
+            }
         }
 
         function loadDevices() {

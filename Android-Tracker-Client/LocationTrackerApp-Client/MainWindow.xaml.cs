@@ -13,6 +13,17 @@ using System.Windows;
 
 namespace LocationTrackerApp_Client
 {
+    public class Location
+    {
+        public string PhoneID { get; set; }
+        public double Latitude { get; set; }
+        public double Longitude { get; set; }
+        public long Timestamp { get; set; }
+        public double? Raio { get; set; }
+        public double? Altitude { get; set; }
+        public double? PrecisionAltitude { get; set; }
+    }
+
     public partial class MainWindow : Window
     {
         public MainWindow()
@@ -91,6 +102,9 @@ namespace LocationTrackerApp_Client
             public comModule()
             {
                 dbPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "localizacoes.db");
+
+                Debug.WriteLine(">>> DB vai ser criado/aberto em: " + dbPath);
+
                 if (!File.Exists(dbPath))
                     SQLiteConnection.CreateFile(dbPath);
 
@@ -98,7 +112,7 @@ namespace LocationTrackerApp_Client
                 connection.Open();
                 string sql = @"CREATE TABLE IF NOT EXISTS localizacoes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    phoneID TEXT,
+                    phoneID TEXT NOT NULL,
                     latitude REAL,
                     longitude REAL,
                     timestamp INTEGER,
@@ -110,37 +124,60 @@ namespace LocationTrackerApp_Client
                 cmd.ExecuteNonQuery();
             }
 
-            public async Task registerFile(string data)
+            public void RegisterFile(string data)
             {
+                Debug.WriteLine(data);
+
                 try
                 {
-                    var localizacoes = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(data);
-                    if (localizacoes == null || localizacoes.Count == 0) return;
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var localizacoes = JsonSerializer.Deserialize<List<Location>>(data, options);
+
+                    if (localizacoes == null || localizacoes.Count == 0)
+                    {
+                        Debug.WriteLine(">>> registerFile: nada para inserir");
+                        return;
+                    }
+                    Debug.WriteLine($">>> registerFile: recebi {localizacoes.Count} itens");
 
                     using var connection = new SQLiteConnection($"Data Source={dbPath};Version=3;");
-                    await connection.OpenAsync();
+                    connection.Open();
                     using var transaction = connection.BeginTransaction();
 
-                    string sql = @"INSERT INTO localizacoes (phoneID, latitude, longitude, timestamp, raio, altitude, precisionAltitude)
-                                   VALUES (@phoneID, @latitude, @longitude, @timestamp, @raio, @altitude, @precisionAltitude)";
+                    const string sql = @"
+                        INSERT INTO localizacoes
+                          (phoneID, latitude, longitude, timestamp, raio, altitude, precisionAltitude)
+                        VALUES
+                          (@phoneID, @latitude, @longitude, @timestamp, @raio, @altitude, @precisionAltitude);
+                    ";
+
+                    using var cmd = new SQLiteCommand(sql, connection, transaction);
 
                     foreach (var loc in localizacoes)
                     {
-                        using var cmd = new SQLiteCommand(sql, connection, transaction);
-                        cmd.Parameters.AddWithValue("@phoneID", loc.GetValueOrDefault("phoneID")?.ToString());
-                        cmd.Parameters.AddWithValue("@latitude", ToNullableDouble(loc, "latitude"));
-                        cmd.Parameters.AddWithValue("@longitude", ToNullableDouble(loc, "longitude"));
-                        cmd.Parameters.AddWithValue("@timestamp", Convert.ToInt64(loc.GetValueOrDefault("timestamp")));
-                        cmd.Parameters.AddWithValue("@raio", ToNullableDouble(loc, "raio"));
-                        cmd.Parameters.AddWithValue("@altitude", ToNullableDouble(loc, "altitude"));
-                        cmd.Parameters.AddWithValue("@precisionAltitude", ToNullableDouble(loc, "precisionAltitude"));
-                        await cmd.ExecuteNonQueryAsync();
+                        Debug.WriteLine($">>> insert: {loc.PhoneID} @ {loc.Timestamp}");
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@phoneID", loc.PhoneID);
+                        cmd.Parameters.AddWithValue("@latitude", loc.Latitude);
+                        cmd.Parameters.AddWithValue("@longitude", loc.Longitude);
+                        cmd.Parameters.AddWithValue("@timestamp", loc.Timestamp);
+                        cmd.Parameters.AddWithValue("@raio", loc.Raio.HasValue ? (object)loc.Raio.Value : DBNull.Value);
+                        cmd.Parameters.AddWithValue("@altitude", loc.Altitude.HasValue ? (object)loc.Altitude.Value : DBNull.Value);
+                        cmd.Parameters.AddWithValue("@precisionAltitude",
+                                                    loc.PrecisionAltitude.HasValue
+                                                    ? (object)loc.PrecisionAltitude.Value
+                                                    : DBNull.Value);
+
+                        cmd.ExecuteNonQuery();
                     }
+
                     transaction.Commit();
+                    Debug.WriteLine($">>> registerFile: inseri {localizacoes.Count} linhas");
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine("Erro no registerFile (bulk insert): " + ex.Message);
+                    Debug.WriteLine(">>> ERRO registerFile: " + ex);
+                    throw;
                 }
             }
 
@@ -187,7 +224,7 @@ namespace LocationTrackerApp_Client
                     using var reader = await cmd.ExecuteReaderAsync();
                     var ids = new List<string>();
                     while (await reader.ReadAsync())
-                        ids.Add(reader.GetString(0));
+                        ids.Add(reader.IsDBNull(0) ? null : reader.GetString(0));
 
                     Debug.WriteLine("IDs encontrados no banco: " + string.Join(", ", ids));
                     return ids;
